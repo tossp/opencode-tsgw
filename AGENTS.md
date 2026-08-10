@@ -4,7 +4,7 @@
 
 - opencode-tsgw：依赖 TSGW 网关模型的 OpenCode 插件扩展包（公共 npm 包）。
 - 单包版本演进：v0.1 ts_search → v0.2 ts_mark → v0.3 session_history → v0.4 worktree_tools → v0.5 tracing。
-- README 仅根目录一份，简述项目用途；施工蓝图与文档以 `docs/` 为准。
+- README 仅根目录一份，简述项目用途；文档与工作跟踪以 GitHub 为准（README + Issues + PR）。
 
 ## 施工红线
 
@@ -22,6 +22,6 @@
 
 ## 文档规则
 
-- `docs/` 按主题域维护：`design/`（设计）、`research/`（取证）、`planning/`（规划）、`operations/`（执行）。
-- 决策变更先更新文档、再改代码。
-- 外部调研成果沉淀到 smemo 记忆系统；项目 docs 只记录采用/否决判断与理由。
+- 文档与工作跟踪以 GitHub 为准（README + Issues + PR 为文档载体），本地不维护 docs 目录。
+- 决策变更先更新 GitHub 文档/议题、再改代码。
+- 外部调研成果沉淀到 smemo 记忆系统；项目文档只记录采用/否决判断与理由。
