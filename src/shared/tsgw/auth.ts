@@ -5,7 +5,9 @@ import type { AuthHook } from "@opencode-ai/plugin"
 
 import { TSGW_PROVIDER_ID, TSGW_PROVIDER_LABEL } from "./constants.js"
 
-export type CreateError = (phase: string, message: string) => Error
+export type TsgwFailurePhase = "AUTH" | "TSGW_CONFIG"
+
+export type CreateError = (phase: TsgwFailurePhase, message: string) => Error
 
 type AuthAccessor = () => Promise<Auth>
 

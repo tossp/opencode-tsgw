@@ -4,12 +4,18 @@ import type { PluginInput } from "@opencode-ai/plugin"
 
 import type { CreateError } from "./auth.js"
 import { TSGW_PROVIDER_ID, TSGW_PROVIDER_LABEL } from "./constants.js"
+import { getActiveModelIds } from "./model-availability.js"
 
-export async function resolveTsgwBaseURL(
+export type TsgwAvailability = {
+  baseURL: string
+  activeModelIds: string[]
+}
+
+async function resolveTsgwProvider(
   client: PluginInput["client"],
   directory: string,
   createError: CreateError,
-): Promise<string> {
+) {
   let result: Awaited<ReturnType<PluginInput["client"]["config"]["providers"]>>
 
   try {
@@ -31,5 +37,23 @@ export async function resolveTsgwBaseURL(
     throw createError("TSGW_CONFIG", `${TSGW_PROVIDER_LABEL} runtime provider baseURL is unavailable.`)
   }
 
+  return { baseURL, provider }
+}
+
+export async function resolveTsgwBaseURL(
+  client: PluginInput["client"],
+  directory: string,
+  createError: CreateError,
+): Promise<string> {
+  const { baseURL } = await resolveTsgwProvider(client, directory, createError)
   return baseURL
+}
+
+export async function resolveTsgwAvailability(
+  client: PluginInput["client"],
+  directory: string,
+  createError: CreateError,
+): Promise<TsgwAvailability> {
+  const { baseURL, provider } = await resolveTsgwProvider(client, directory, createError)
+  return { baseURL, activeModelIds: getActiveModelIds(provider) }
 }
