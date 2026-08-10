@@ -4,11 +4,13 @@ on:
   push:
     tags: ["v*"]
 
+permissions:
+  contents: read
+  id-token: write # OIDC trusted publishing: 自动签名与 provenance，无令牌
+
 jobs:
   publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -20,11 +22,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
-      # 首次发布用 NPM_TOKEN（.npmrc 占位符插值）；配置 Trusted Publisher(OIDC) 后改为
-      # permissions.id-token: write + 无 token env 的 npm publish（自动 provenance）
       - run: npm publish
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Sync npmmirror mirror
         continue-on-error: true
         run: |
