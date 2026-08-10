@@ -7,17 +7,26 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
           cache: npm
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
+      # 首次发布用 NPM_TOKEN（.npmrc 占位符插值）；配置 Trusted Publisher(OIDC) 后改为
+      # permissions.id-token: write + 无 token env 的 npm publish（自动 provenance）
       - run: npm publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Sync npmmirror mirror
+        continue-on-error: true
+        run: |
+          curl -fsS -X PUT "https://registry.npmmirror.com/-/package/opencode-tsgw/syncs" \
+            -o /dev/null -w "npmmirror sync: HTTP %{http_code}\n"
