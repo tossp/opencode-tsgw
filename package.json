@@ -1,6 +1,6 @@
 {
   "name": "opencode-tsgw",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "依赖 TSGW 网关模型的 OpenCode 插件扩展包。",
   "type": "module",
   "license": "MIT",
