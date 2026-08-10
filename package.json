@@ -17,7 +17,8 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json",
+    "test": "node --test scripts/verify/ts-search/*.test.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.27",
