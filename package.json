@@ -4,6 +4,19 @@
   "description": "依赖 TSGW 网关模型的 OpenCode 插件扩展包。",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tossp/opencode-tsgw.git"
+  },
+  "homepage": "https://github.com/tossp/opencode-tsgw",
+  "bugs": {
+    "url": "https://github.com/tossp/opencode-tsgw/issues"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "tsgw"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
