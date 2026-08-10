@@ -31,13 +31,15 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
-    "test": "node --test scripts/verify/ts-search/*.test.mjs"
+    "test": "node --test scripts/verify/*/*.test.mjs"
   },
   "dependencies": {
+    "@ai-sdk/openai": "4.0.36",
     "@ai-sdk/openai-compatible": "^3.0.27",
     "@opencode-ai/plugin": "^1.18.0",
     "@opencode-ai/sdk": "^1.18.0",
-    "ai": "^7.0.58"
+    "ai": "^7.0.58",
+    "uuid": "14.0.1"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
