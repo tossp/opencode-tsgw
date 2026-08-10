@@ -18,5 +18,3 @@ export const tracing: Plugin = async (_ctx) => {
     },
   }
 }
-
-export default tracing

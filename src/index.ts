@@ -1,3 +1,5 @@
-// A/F 验证结论（2026-08-10）: 根入口仅具名导出插件函数；插件初始化内部兜底，
-// 按活跃模型注册工具，配置探测不可用时仍注册并在调用时返回明确不可用结果。
 export { tsSearch } from "./ts-search/index.js"
+export { tsMark } from "./ts-mark/index.js"
+export { sessionHistory } from "./session-history/index.js"
+export { worktreeTools } from "./worktree-tools/index.js"
+export { tracing } from "./tracing/index.js"
