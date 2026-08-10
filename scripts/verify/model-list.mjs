@@ -1,13 +1,24 @@
-// F 运行时实证验证夹具（tossop/opencode-tsgw#1，2026-08-10）
+// F 运行时实证验证夹具（tossp/opencode-tsgw#1，2026-08-10）
 // 用途: 连接运行中的 OpenCode 服务，调用 config.providers()/provider.list()
 //       读取 tsgw provider 的模型列表，验证"按模型注册"可行性。
-// 用法: bun scripts/verify/model-list.mjs --base-url http://<host>:<port> [--timeout-ms <ms>]
+// 用法: 先确保依赖可用（npm install 后），再运行:
+//   OPENCODE_BASE_URL=http://<host>:<port> bun scripts/verify/model-list.mjs
+// 环境变量:
+//   OPENCODE_BASE_URL（必填）: OpenCode 服务地址
+//   OPENCODE_DIRECTORY（可选）: 项目目录（默认当前目录）
+//   OPENCODE_VERIFY_TIMEOUT_MS（可选）: 请求超时毫秒（默认 7000）
+//   OPENCODE_VERIFY_OUTPUT_FILE（可选）: 输出文件路径（默认不落盘）
 // 注意: options/headers 一律打码输出，不落盘敏感信息。
-import { createOpencodeClient } from "/root/.config/opencode/node_modules/@opencode-ai/sdk/dist/index.js";
+import { createOpencodeClient } from "@opencode-ai/sdk";
 
-const baseUrl = process.env.OPENCODE_BASE_URL ?? "http://100.64.170.247:2086";
-const directory = process.env.OPENCODE_DIRECTORY ?? "/root/proj/opencode-tsgw";
+const baseUrl = process.env.OPENCODE_BASE_URL ?? "";
+const directory = process.env.OPENCODE_DIRECTORY ?? "";
 const timeoutMs = Number(process.env.OPENCODE_VERIFY_TIMEOUT_MS ?? "7000");
+
+if (!baseUrl) {
+  console.error("Usage: OPENCODE_BASE_URL=http://<host>:<port> bun scripts/verify/model-list.mjs");
+  process.exit(1);
+}
 
 function sanitizeString(value) {
   return String(value)
