@@ -1,10 +1,32 @@
 {
   "name": "opencode-tsgw",
   "version": "0.1.0",
-  "description": "依赖 TSGW 网关的 OpenCode 插件扩展包。",
+  "description": "依赖 TSGW 网关模型的 OpenCode 插件扩展包。",
   "type": "module",
   "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.27",
+    "@opencode-ai/plugin": "^1.18.0",
+    "@opencode-ai/sdk": "^1.18.0",
+    "ai": "^7.0.58"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^5.8.0"
   }
 }
