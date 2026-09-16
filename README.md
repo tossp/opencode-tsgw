@@ -3,7 +3,7 @@
 依赖 TSGW 网关模型的 OpenCode 插件扩展包（公共 npm 包）。
 
 - 包提供五个插件：TS Search、TS Mark、Session History、Worktree Tools、Tracing。
-- TS Search / TS Mark 根据 OpenCode 配置中 `tsgw` 的模型字典 key 和 `status=active` 注册；成功读取但无对应活跃模型时不注册，provider 缺失或读取失败时兜底返回不可用提示。缺地址不影响注册判定。
+- TS Search / TS Mark 启动即完整注册工具、模型枚举及参数默认值；后台 provider 查询不阻塞初始化，无相关 active 模型也显示工具。仅复用当前实例的在途查询，完成后调用时重新读取；执行期按真实配置、认证和网关请求处理错误，不因后台失败永久禁用工具。
 - 实际请求地址依次取运行时 `options.baseURL`、目标模型 `api.url`、按需读取配置的 `provider.tsgw.options.baseURL`、`provider.tsgw.api`；不借用其他模型地址。
 - 文档与工作跟踪以 GitHub 为准（Issues/PR）：https://github.com/tossp/opencode-tsgw
 

@@ -33,7 +33,3 @@ export function toolFailure(title: string, error: unknown) {
     },
   }
 }
-
-export function unavailableMediaResult(title: string) {
-  return toolFailure(title, new TsgwMediaError("TSGW_CONFIG", "TSGW runtime provider configuration is unavailable."))
-}

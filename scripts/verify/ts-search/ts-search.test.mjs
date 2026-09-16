@@ -6,11 +6,59 @@ import test from "node:test"
 
 import { injectAutoSearchParams } from "../../../dist/ts-search/chat-params.js"
 import { tsSearch } from "../../../dist/ts-search/index.js"
+import { tsMark } from "../../../dist/ts-mark/index.js"
 import { buildSearchResultMetadata, renderMergedResult } from "../../../dist/ts-search/render.js"
 import { collectUrls, extractAnswer } from "../../../dist/ts-search/response.js"
 import { createTsSearchTool } from "../../../dist/ts-search/tool.js"
 
 const SEARCH_MODELS = ["gpt-6-astra", "grok-4.6"]
+
+test("factories: pending providers do not delay complete hooks/schema/defaults or later remove tools", async () => {
+  let release
+  let timer
+  let reads = 0
+  const deferred = new Promise((resolve) => { release = resolve })
+  const client = { config: { providers: () => { reads++; return deferred } } }
+  const factories = Promise.all([tsSearch({ client, directory: "/fixture" }), tsMark({ client, directory: "/fixture" })])
+  try {
+    const [search, mark] = await Promise.race([
+      factories,
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("factory waited for providers")), 250) }),
+    ])
+    assert.equal(reads, 2, "each instance starts its own background read")
+    assert.equal(search.auth.provider, "tsgw")
+    assert.equal(mark.auth.provider, "tsgw")
+    assert.equal(typeof search["chat.params"], "function")
+    const assertTools = () => {
+      assert.deepEqual(Object.keys(search.tool), ["ts_search"])
+      assert.deepEqual(Object.keys(mark.tool), ["ts_mark_image", "ts_mark_audio"])
+    }
+    assertTools()
+    assert.deepEqual(Object.keys(search.tool.ts_search.args), ["query"])
+    assert.equal(search.tool.ts_search.args.query.parse("offline"), "offline")
+    const image = mark.tool.ts_mark_image.args
+    assert.deepEqual(Object.keys(image), ["model", "prompt", "size", "quality", "timeout"])
+    assert.deepEqual(image.model._def.innerType.options, ["gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-2.5"])
+    assert.equal(image.model.parse(undefined), "gpt-image-2.5-flare")
+    assert.equal(image.quality.parse(undefined), "auto")
+    assert.equal(image.timeout.parse(undefined), 300)
+    const audio = mark.tool.ts_mark_audio.args
+    assert.deepEqual(Object.keys(audio), ["model", "text", "voice", "format", "timeout"])
+    assert.deepEqual(audio.model._def.innerType.options, ["mimo-v2.5-tts", "mimo-v2.5-tts-voicedesign", "mimo-v2.5-tts-voiceclone"])
+    assert.equal(audio.model.parse(undefined), "mimo-v2.5-tts")
+    assert.equal(audio.format.parse(undefined), "wav")
+    assert.equal(audio.timeout.parse(undefined), 300)
+    release({ data: { providers: [{ id: "tsgw", models: {} }] } })
+    await new Promise((resolve) => setImmediate(resolve))
+    assertTools()
+    assert.equal(reads, 2)
+  } finally {
+    clearTimeout(timer)
+    release({ data: { providers: [{ id: "tsgw", models: {} }] } })
+    await factories
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+})
 
 const dualRouteResults = [
   {
@@ -207,12 +255,11 @@ test("chat.params: GPT 和 Grok 分别注入冻结的搜索参数", () => {
   })
 })
 
-test("tool: unavailable 状态返回同形的冻结 ToolResult", async () => {
+test("tool: 执行期配置不可用返回同形的冻结 ToolResult", async () => {
   const definition = createTsSearchTool({
-    client: {},
+    client: { config: { providers: async () => ({}) } },
     directory: "/fixture",
     getApiKey: async () => "not-used",
-    availability: "unavailable",
   })
   const metadataCalls = []
   const result = await definition.execute({ query: "opencode plugin" }, toolContext(metadataCalls))
@@ -228,13 +275,13 @@ test("tool: unavailable 状态返回同形的冻结 ToolResult", async () => {
   })
 })
 
-test("plugin: 按模型三层注册逻辑", async (t) => {
-  await t.test("仅退役搜索模型活跃时不注册，新Grok独立活跃可注册", async () => {
+test("plugin: 完整注册不依赖活跃模型", async (t) => {
+  await t.test("仅退役搜索模型或新Grok独立活跃均注册", async () => {
     const retired = await tsSearch({
       client: { config: { providers: async () => providerResponse({ "gpt-5.4": { status: "active" }, "grok-4.20-fast": { status: "active" } }) } },
       directory: "/fixture",
     })
-    assert.deepEqual(retired.tool, {})
+    assert.deepEqual(Object.keys(retired.tool), ["ts_search"])
     const grok = await tsSearch({
       client: { config: { providers: async () => providerResponse({ "grok-4.6": { status: "active" } }) } },
       directory: "/fixture",
@@ -252,16 +299,16 @@ test("plugin: 按模型三层注册逻辑", async (t) => {
     assert.deepEqual(Object.keys(hooks.tool), ["ts_search"])
   })
 
-  await t.test("无目标活跃模型时不注册工具", async () => {
+  await t.test("无目标活跃模型时仍注册工具", async () => {
     const hooks = await tsSearch({
       client: { config: { providers: async () => providerResponse({ "gpt-6-astra": { status: "inactive" } }) } },
       directory: "/fixture",
     })
 
-    assert.deepEqual(Object.keys(hooks.tool), [])
+    assert.deepEqual(Object.keys(hooks.tool), ["ts_search"])
   })
 
-  await t.test("配置探测失败时保留工具并返回 unavailable", async () => {
+  await t.test("后台与执行期读取失败时保留工具并返回读取错误", async () => {
     const hooks = await tsSearch({
       client: { config: { providers: async () => { throw new Error("fixture provider probe failure") } } },
       directory: "/fixture",
@@ -272,7 +319,7 @@ test("plugin: 按模型三层注册逻辑", async (t) => {
     assert.deepEqual(Object.keys(hooks.tool), ["ts_search"])
     assert.deepEqual(result, {
       title: "TS Search",
-      output: unavailableOutput,
+      output: unavailableOutput.replaceAll("configuration is unavailable.", "configuration could not be read."),
       metadata: unavailableMetadata(),
     })
   })

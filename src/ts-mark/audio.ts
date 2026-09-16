@@ -4,7 +4,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import { generateText, type ModelMessage } from "ai"
 
 import { TSGW_PROVIDER_ID, TSGW_PROVIDER_LABEL } from "../shared/tsgw/constants.js"
-import { resolveTsgwBaseURL } from "../shared/tsgw/provider.js"
+import { resolveTsgwBaseURL, type TsgwProviderReader } from "../shared/tsgw/provider.js"
 import { writeArtifact } from "./artifact.js"
 import {
   AUDIO_FORMATS,
@@ -12,9 +12,8 @@ import {
   AUDIO_TOOL_NAME,
   type AudioFormat,
   type AudioModel,
-  type TsgwMediaAvailabilityStatus,
 } from "./constants.js"
-import { TsgwMediaError, toolFailure, unavailableMediaResult } from "./error.js"
+import { TsgwMediaError, toolFailure } from "./error.js"
 import { inspectAudio } from "./metadata.js"
 import {
   DEFAULT_TIMEOUT_SECONDS,
@@ -45,7 +44,7 @@ export type AudioToolInput = {
   client: PluginInput["client"]
   directory: string
   getApiKey: () => Promise<string>
-  availability: TsgwMediaAvailabilityStatus
+  readProvider?: TsgwProviderReader
 }
 
 export function normalizeAudioArgs(args: AudioToolArgs): NormalizedAudioToolArgs {
@@ -132,8 +131,6 @@ export function createAudioTool(input: AudioToolInput): ToolDefinition {
     },
     async execute(args, context) {
       try {
-        if (input.availability === "unavailable") return unavailableMediaResult(AUDIO_TOOL_NAME)
-
         const normalizedArgs = normalizeAudioArgs(args)
         const text = validateAudioText(normalizedArgs.model, normalizedArgs.text)
         let messages: ModelMessage[]
@@ -150,7 +147,7 @@ export function createAudioTool(input: AudioToolInput): ToolDefinition {
           messages = [{ role: "assistant", content: text }]
         }
 
-        const baseURL = await resolveTsgwBaseURL(input.client, input.directory, createError, normalizedArgs.model)
+        const baseURL = await resolveTsgwBaseURL(input.client, input.directory, createError, normalizedArgs.model, input.readProvider)
         const apiKey = await input.getApiKey()
         const tsgw = createOpenAICompatible({ name: TSGW_PROVIDER_ID, baseURL, apiKey, metadataExtractor: tsgwAudioMetadataExtractor })
 

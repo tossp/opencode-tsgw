@@ -1,7 +1,7 @@
 import type { PluginInput } from "@opencode-ai/plugin"
 import { tool, type ToolContext, type ToolDefinition, type ToolResult } from "@opencode-ai/plugin"
 
-import { resolveTsgwBaseURL } from "../shared/tsgw/provider.js"
+import { resolveTsgwBaseURL, type TsgwProviderReader } from "../shared/tsgw/provider.js"
 import {
   BACKEND,
   GPT_SEARCH_MODEL,
@@ -16,13 +16,11 @@ import { executeSearchRoute, failedSearchRoute, type SearchFetch, type SearchRou
 import { buildSearchResultMetadata, renderMergedResult } from "./render.js"
 import { trimLine } from "./response.js"
 
-export type TsgwAvailabilityStatus = "ok" | "unavailable"
-
 export type TsSearchToolInput = {
   client: PluginInput["client"]
   directory: string
   getApiKey: () => Promise<string>
-  availability: TsgwAvailabilityStatus
+  readProvider?: TsgwProviderReader
 }
 
 export type UnifiedSearchInput = TsSearchToolInput & {
@@ -44,7 +42,7 @@ function createError(phase: SearchFailurePhase, message: string): TsgwSearchErro
 }
 
 async function resolveTsSearchBaseURL(input: TsSearchToolInput, modelID: string): Promise<string> {
-  const baseURL = await resolveTsgwBaseURL(input.client, input.directory, createError, modelID)
+  const baseURL = await resolveTsgwBaseURL(input.client, input.directory, createError, modelID, input.readProvider)
 
   try {
     new URL(baseURL)
@@ -107,15 +105,6 @@ function writeSearchMetadata(context: ToolContext): void {
   })
 }
 
-function unavailableSearchResult(): ToolResult {
-  const results = buildRouteFailure("[TSGW_CONFIG] TSGW runtime provider configuration is unavailable.")
-  return {
-    title: TOOL_TITLE,
-    output: renderMergedResult(results),
-    metadata: buildSearchResultMetadata(results),
-  }
-}
-
 export function createTsSearchTool(input: TsSearchToolInput): ToolDefinition {
   return tool({
     description: "在固定的 GPT 与 Grok chat/completions 路由上使用统一 TS Search。",
@@ -125,7 +114,6 @@ export function createTsSearchTool(input: TsSearchToolInput): ToolDefinition {
     async execute(args, context): Promise<ToolResult> {
       const query = trimLine(args.query)
       writeSearchMetadata(context)
-      if (input.availability === "unavailable") return unavailableSearchResult()
 
       const results = await executeUnifiedSearch({
         ...input,
