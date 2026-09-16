@@ -1,5 +1,6 @@
 // 冻结于 2026-08-10（v0.1 行为契约）。
 // 黄金值从当前已验收的 dist 产物推导并人工复核；修改实现时不得以放宽断言替代行为审查。
+// 2026-09-16: issue #22 明确替换固定搜索ID；通用 chat.params 示例保留。
 import assert from "node:assert/strict"
 import test from "node:test"
 
@@ -9,12 +10,12 @@ import { buildSearchResultMetadata, renderMergedResult } from "../../../dist/ts-
 import { collectUrls, extractAnswer } from "../../../dist/ts-search/response.js"
 import { createTsSearchTool } from "../../../dist/ts-search/tool.js"
 
-const SEARCH_MODELS = ["gpt-5.4", "grok-4.20-fast"]
+const SEARCH_MODELS = ["gpt-6-astra", "grok-4.6"]
 
 const dualRouteResults = [
   {
     family: "gpt",
-    model: "gpt-5.4",
+    model: "gpt-6-astra",
     ok: true,
     answer: "OpenCode is extensible.",
     urls: ["https://opencode.ai/docs", "https://example.test/shared"],
@@ -23,7 +24,7 @@ const dualRouteResults = [
   },
   {
     family: "grok",
-    model: "grok-4.20-fast",
+    model: "grok-4.6",
     ok: true,
     answer: "OpenCode uses plugins.",
     urls: ["https://example.test/shared", "https://x.ai/search"],
@@ -35,8 +36,8 @@ const dualRouteResults = [
 const dualRouteOutput = `backend: aih
 result: success
 searched models:
-- gpt: gpt-5.4
-- grok: grok-4.20-fast
+- gpt: gpt-6-astra
+- grok: grok-4.6
 gpt answer:
 OpenCode is extensible.
 grok answer:
@@ -53,8 +54,8 @@ note: results differ across model families`
 const unavailableOutput = `backend: aih
 result: failed
 searched models:
-- gpt: gpt-5.4
-- grok: grok-4.20-fast
+- gpt: gpt-6-astra
+- grok: grok-4.6
 gpt answer:
 [failed] [TSGW_CONFIG] TSGW runtime provider configuration is unavailable.
 grok answer:
@@ -74,14 +75,14 @@ function unavailableMetadata() {
     routes: [
       {
         family: "gpt",
-        model: "gpt-5.4",
+        model: "gpt-6-astra",
         status: "failed",
         requestId: "",
         sourceUrls: [],
       },
       {
         family: "grok",
-        model: "grok-4.20-fast",
+        model: "grok-4.6",
         status: "failed",
         requestId: "",
         sourceUrls: [],
@@ -122,14 +123,14 @@ test("render: 双路成功结果的输出和 metadata 冻结", () => {
     routes: [
       {
         family: "gpt",
-        model: "gpt-5.4",
+        model: "gpt-6-astra",
         status: "success",
         requestId: "gpt-req-001",
         sourceUrls: ["https://opencode.ai/docs", "https://example.test/shared"],
       },
       {
         family: "grok",
-        model: "grok-4.20-fast",
+        model: "grok-4.6",
         status: "success",
         requestId: "grok-req-002",
         sourceUrls: ["https://example.test/shared", "https://x.ai/search"],
@@ -142,8 +143,8 @@ test("render: 空结果的失败输出和 metadata 冻结", () => {
   assert.equal(renderMergedResult([]), `backend: aih
 result: failed
 searched models:
-- gpt: gpt-5.4
-- grok: grok-4.20-fast
+- gpt: gpt-6-astra
+- grok: grok-4.6
 gpt answer:
 [failed] Unknown error.
 grok answer:
@@ -228,9 +229,21 @@ test("tool: unavailable 状态返回同形的冻结 ToolResult", async () => {
 })
 
 test("plugin: 按模型三层注册逻辑", async (t) => {
+  await t.test("仅退役搜索模型活跃时不注册，新Grok独立活跃可注册", async () => {
+    const retired = await tsSearch({
+      client: { config: { providers: async () => providerResponse({ "gpt-5.4": { status: "active" }, "grok-4.20-fast": { status: "active" } }) } },
+      directory: "/fixture",
+    })
+    assert.deepEqual(retired.tool, {})
+    const grok = await tsSearch({
+      client: { config: { providers: async () => providerResponse({ "grok-4.6": { status: "active" } }) } },
+      directory: "/fixture",
+    })
+    assert.deepEqual(Object.keys(grok.tool), ["ts_search"])
+  })
   await t.test("有目标活跃模型时注册 ts_search", async () => {
     const hooks = await tsSearch({
-      client: { config: { providers: async () => providerResponse({ "gpt-5.4": { status: "active" } }) } },
+      client: { config: { providers: async () => providerResponse({ "gpt-6-astra": { status: "active" } }) } },
       directory: "/fixture",
     })
 
@@ -241,7 +254,7 @@ test("plugin: 按模型三层注册逻辑", async (t) => {
 
   await t.test("无目标活跃模型时不注册工具", async () => {
     const hooks = await tsSearch({
-      client: { config: { providers: async () => providerResponse({ "gpt-5.4": { status: "inactive" } }) } },
+      client: { config: { providers: async () => providerResponse({ "gpt-6-astra": { status: "inactive" } }) } },
       directory: "/fixture",
     })
 

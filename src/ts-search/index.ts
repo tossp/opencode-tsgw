@@ -15,8 +15,7 @@ export const tsSearch: Plugin = async ({ client, directory }) => {
   let availability: TsgwAvailabilityStatus = "unavailable"
 
   try {
-    const { baseURL, activeModelIds } = await resolveTsgwAvailability(client, directory, createError)
-    new URL(baseURL)
+    const { activeModelIds } = await resolveTsgwAvailability(client, directory, createError)
     registerTool = hasAnyModel(activeModelIds, [GPT_SEARCH_MODEL, GROK_SEARCH_MODEL])
     availability = "ok"
   } catch {

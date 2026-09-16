@@ -2,8 +2,23 @@
 
 依赖 TSGW 网关模型的 OpenCode 插件扩展包（公共 npm 包）。
 
-- 单包版本演进：v0.1 ts_search → v0.2 ts_mark → v0.3 session_history → v0.4 worktree_tools → v0.5 tracing
-- 部分能力（TS Search / TS Mark）依赖 TSGW 网关的模型；无对应模型时相关工具不注册，探测失败时兜底返回不可用提示
+- 包提供五个插件：TS Search、TS Mark、Session History、Worktree Tools、Tracing。
+- TS Search / TS Mark 根据 OpenCode 配置中 `tsgw` 的模型字典 key 和 `status=active` 注册；成功读取但无对应活跃模型时不注册，provider 缺失或读取失败时兜底返回不可用提示。缺地址不影响注册判定。
+- 实际请求地址依次取运行时 `options.baseURL`、目标模型 `api.url`、按需读取配置的 `provider.tsgw.options.baseURL`、`provider.tsgw.api`；不借用其他模型地址。
 - 文档与工作跟踪以 GitHub 为准（Issues/PR）：https://github.com/tossp/opencode-tsgw
 
 施工中，规则见 AGENTS.md。
+
+## 图像支持（当前源码，尚未发布）
+
+- 仅支持 `gpt-image-2.5-sunburst`、`gpt-image-2.5-flare`、`gpt-image-2.5`，全部走 Images API；默认 **`gpt-image-2.5-flare`**，quality 为 `auto`、timeout 为 300 秒。
+- 三个 ID 均允许 `low/medium/high/xhigh/max/auto`；已移除旧图像模型及 Responses 图像路径。
+- 裸 ID `gpt-image-2.5` 原样透传、不映射变体，上游语义及参数接受性未知，不代表已核实当前 TSGW 部署。工具注册后可选择其他候选模型，由实际请求返回可用性结果。
+- size 可省略、设为 `auto` 或正安全整数 `WIDTHxHEIGHT`，本地仅检查 16 对齐、宽高比不超过 3:1；其他限额由服务端检查，不继承旧模型像素预算或单边限制。
+- 修复 GPT Images 的 quality/outputFormat 未实际发出：使用 SDK 的 `openai` 参数命名空间，请求体包含 `quality` 和 `output_format: "png"`。离线回归不代表真实网关生成已验证。
+
+## 搜索模型（当前源码，尚未发布）
+
+- 双路固定为 `gpt-6-astra` 和 `grok-4.6`，各自解析目标模型地址并走 chat/completions。
+- 工具内部 GPT 请求固定 `reasoning_effort: "low"` 并启用 `web_search`；Grok 保持 `search_parameters`。不改变 OpenCode 全局模型变体或图像 quality。
+- 仅完成离线请求回归，未验证真实网关搜索能力。

@@ -32,7 +32,7 @@ function buildMessages(query: string): ModelMessage[] {
 }
 
 function transformGptSearchRequest(body: Record<string, unknown>): Record<string, unknown> {
-  return { ...body, tools: [{ type: "web_search" }] }
+  return { ...body, reasoning_effort: "low", tools: [{ type: "web_search" }] }
 }
 
 export function failedSearchRoute(route: SearchRoute, error: string): SearchRouteResult {
