@@ -95,7 +95,7 @@ export function createImageTool(input: ImageToolInput): ToolDefinition {
         const requestedSize = normalizedArgs.model === "gpt-image-2"
           ? validateGptImageSize(normalizedArgs.size)
           : validateLunaImageSize(normalizedArgs.size)
-        const baseURL = await resolveTsgwBaseURL(input.client, input.directory, createError)
+        const baseURL = await resolveTsgwBaseURL(input.client, input.directory, createError, normalizedArgs.model)
         const apiKey = await input.getApiKey()
         const tsgwOpenAI = createOpenAI({ name: TSGW_PROVIDER_ID, baseURL, apiKey })
 

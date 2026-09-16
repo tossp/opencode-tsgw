@@ -43,8 +43,8 @@ function createError(phase: SearchFailurePhase, message: string): TsgwSearchErro
   return new TsgwSearchError(phase, message)
 }
 
-async function resolveTsSearchBaseURL(input: TsSearchToolInput): Promise<string> {
-  const baseURL = await resolveTsgwBaseURL(input.client, input.directory, createError)
+async function resolveTsSearchBaseURL(input: TsSearchToolInput, modelID: string): Promise<string> {
+  const baseURL = await resolveTsgwBaseURL(input.client, input.directory, createError, modelID)
 
   try {
     new URL(baseURL)
@@ -60,29 +60,35 @@ export async function executeUnifiedSearch(input: UnifiedSearchInput): Promise<S
     return buildRouteFailure("[INPUT_VALIDATION] Missing query.")
   }
 
-  let baseURL: string
-  try {
-    baseURL = await resolveTsSearchBaseURL(input)
-  } catch (error) {
-    return buildRouteFailure(formatSearchError(error))
+  const addresses = await Promise.allSettled(
+    SEARCH_ROUTES.map((route) => resolveTsSearchBaseURL(input, route.model)),
+  )
+  if (addresses.every((item) => item.status === "rejected")) {
+    return addresses.map((item, index) => rejectedRouteFailure(SEARCH_ROUTES[index], item.reason))
   }
 
   let apiKey: string
   try {
     apiKey = await input.getApiKey()
   } catch (error) {
-    return buildRouteFailure(formatSearchError(error))
+    return addresses.map((address, index) => rejectedRouteFailure(
+      SEARCH_ROUTES[index], address.status === "rejected" ? address.reason : error,
+    ))
   }
 
   const settled = await Promise.allSettled(
-    SEARCH_ROUTES.map((route) => executeSearchRoute({
-      route,
-      query: input.query,
-      apiKey,
-      baseURL,
-      signal: input.signal,
-      fetchImpl: input.fetchImpl,
-    })),
+    SEARCH_ROUTES.map((route, index) => {
+      const address = addresses[index]
+      if (address.status === "rejected") return rejectedRouteFailure(route, address.reason)
+      return executeSearchRoute({
+        route,
+        query: input.query,
+        apiKey,
+        baseURL: address.value,
+        signal: input.signal,
+        fetchImpl: input.fetchImpl,
+      })
+    }),
   )
 
   return settled.map((item, index) => {

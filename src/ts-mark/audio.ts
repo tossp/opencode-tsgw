@@ -150,7 +150,7 @@ export function createAudioTool(input: AudioToolInput): ToolDefinition {
           messages = [{ role: "assistant", content: text }]
         }
 
-        const baseURL = await resolveTsgwBaseURL(input.client, input.directory, createError)
+        const baseURL = await resolveTsgwBaseURL(input.client, input.directory, createError, normalizedArgs.model)
         const apiKey = await input.getApiKey()
         const tsgw = createOpenAICompatible({ name: TSGW_PROVIDER_ID, baseURL, apiKey, metadataExtractor: tsgwAudioMetadataExtractor })
 
