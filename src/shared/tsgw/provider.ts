@@ -4,11 +4,7 @@ import type { PluginInput } from "@opencode-ai/plugin"
 
 import type { CreateError } from "./auth.js"
 import { TSGW_PROVIDER_ID, TSGW_PROVIDER_LABEL } from "./constants.js"
-import { getActiveModelIds } from "./model-availability.js"
-
-export type TsgwAvailability = {
-  activeModelIds: string[]
-}
+export type TsgwProviderReader = () => Promise<Awaited<ReturnType<typeof resolveTsgwProvider>>>
 
 async function resolveTsgwProvider(
   client: PluginInput["client"],
@@ -35,6 +31,21 @@ async function resolveTsgwProvider(
   return provider
 }
 
+export function createTsgwProviderReader(
+  client: PluginInput["client"], directory: string, createError: CreateError,
+): TsgwProviderReader {
+  let inflight: ReturnType<TsgwProviderReader> | undefined
+  return () => {
+    if (!inflight) {
+      const pending = resolveTsgwProvider(client, directory, createError)
+      inflight = pending
+      const clear = () => { if (inflight === pending) inflight = undefined }
+      void pending.then(clear, clear)
+    }
+    return inflight
+  }
+}
+
 function nonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined
 }
@@ -44,8 +55,9 @@ export async function resolveTsgwBaseURL(
   directory: string,
   createError: CreateError,
   modelID: string,
+  readProvider?: TsgwProviderReader,
 ): Promise<string> {
-  const provider = await resolveTsgwProvider(client, directory, createError)
+  const provider = await (readProvider ?? (() => resolveTsgwProvider(client, directory, createError)))()
   const runtimeURL = nonEmptyString(provider.options?.baseURL)
     ?? nonEmptyString(provider.models[modelID]?.api?.url)
   if (runtimeURL) return runtimeURL
@@ -65,13 +77,4 @@ export async function resolveTsgwBaseURL(
     throw createError("TSGW_CONFIG", `${TSGW_PROVIDER_LABEL} runtime provider baseURL is unavailable.`)
   }
   return baseURL
-}
-
-export async function resolveTsgwAvailability(
-  client: PluginInput["client"],
-  directory: string,
-  createError: CreateError,
-): Promise<TsgwAvailability> {
-  const provider = await resolveTsgwProvider(client, directory, createError)
-  return { activeModelIds: getActiveModelIds(provider) }
 }

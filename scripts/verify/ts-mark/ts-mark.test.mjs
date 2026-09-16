@@ -20,7 +20,6 @@ import {
   withSharedTimeout,
 } from "../../../dist/ts-mark/validation.js"
 
-const TSGW_CONFIG_UNAVAILABLE = "TSGW runtime provider configuration is unavailable."
 
 function toolContext(metadataCalls = []) {
   return {
@@ -85,7 +84,6 @@ test("image: 参数默认值、模型与 size 校验矩阵冻结", async (t) => 
     client: providerClient({ "gpt-image-2.5-flare": { status: "active" } }),
     directory: "/fixture",
     getApiKey: async () => "fixture-key",
-    availability: "ok",
   })
   for (const model of IMAGE_MODELS) assert.equal(definition.args.model.safeParse(model).success, true)
   assert.equal(definition.args.model.safeParse("image-unknown").success, false)
@@ -131,7 +129,6 @@ test("audio: 参数默认值、模型、voice、format 与 text 校验矩阵冻�
     client: providerClient({ "mimo-v2.5-tts": { status: "active" } }),
     directory: "/fixture",
     getApiKey: async () => "fixture-key",
-    availability: "ok",
   })
   for (const model of AUDIO_MODELS) assert.equal(definition.args.model.safeParse(model).success, true)
   assert.equal(definition.args.model.safeParse("mimo-unknown").success, false)
@@ -170,7 +167,6 @@ test("error: 八个 phase、英文文案与 ToolResult 格式冻结", async (t) 
         client: { config: { providers: async () => { throw new Error("fixture provider failure") } } },
         directory: "/fixture",
         getApiKey: async () => "fixture-key",
-        availability: "ok",
       })
       const result = await definition.execute({ model: "gpt-image-2.5-flare", prompt: "diagram", quality: "auto", timeout: 300 }, toolContext())
       assert.deepEqual(result, failureResult("ts_mark_image", "TSGW_CONFIG", "TSGW runtime provider configuration could not be read."))
@@ -181,7 +177,6 @@ test("error: 八个 phase、英文文案与 ToolResult 格式冻结", async (t) 
         client: providerClient({ "gpt-image-2.5-flare": { status: "active" } }),
         directory: "/fixture",
         getApiKey: async () => { throw new TsgwMediaError("AUTH", "TSGW API authentication is not available.") },
-        availability: "ok",
       })
       const result = await definition.execute({ model: "gpt-image-2.5-flare", prompt: "diagram", quality: "auto", timeout: 300 }, toolContext())
       assert.deepEqual(result, failureResult("ts_mark_image", "AUTH", "TSGW API authentication is not available."))
@@ -223,19 +218,19 @@ test("artifact: 0700 目录、0600 wx UUID 文件与写入失败冻结", async (
   })
 })
 
-test("plugin: image/audio 按模型三层注册与 unavailable 结果冻结", async (t) => {
-  await t.test("目标活跃模型各自注册对应工具", async () => {
+test("plugin: image/audio 完整注册与执行期错误结果", async (t) => {
+  await t.test("单个目标活跃模型仍注册完整工具", async () => {
     const imageHooks = await tsMark({ client: providerClient({ "gpt-image-2.5-flare": { status: "active" } }), directory: "/fixture" })
     const audioHooks = await tsMark({ client: providerClient({ "mimo-v2.5-tts": { status: "active" } }), directory: "/fixture" })
     assert.equal(imageHooks.auth.provider, "tsgw")
-    assert.deepEqual(Object.keys(imageHooks.tool), ["ts_mark_image"])
-    assert.deepEqual(Object.keys(audioHooks.tool), ["ts_mark_audio"])
+    assert.deepEqual(Object.keys(imageHooks.tool), ["ts_mark_image", "ts_mark_audio"])
+    assert.deepEqual(Object.keys(audioHooks.tool), ["ts_mark_image", "ts_mark_audio"])
   })
-  await t.test("探测成功但无目标活跃模型时不注册工具", async () => {
+  await t.test("无目标活跃模型时仍完整注册工具", async () => {
     const hooks = await tsMark({ client: providerClient({ "gpt-image-2.5-flare": { status: "inactive" } }), directory: "/fixture" })
-    assert.deepEqual(Object.keys(hooks.tool), [])
+    assert.deepEqual(Object.keys(hooks.tool), ["ts_mark_image", "ts_mark_audio"])
   })
-  await t.test("探测失败时保留两个工具并返回同形 unavailable 结果", async () => {
+  await t.test("后台和执行期读取失败仍保留工具，返回读取错误", async () => {
     const hooks = await tsMark({
       client: { config: { providers: async () => { throw new Error("fixture probe failure") } } },
       directory: "/fixture",
@@ -243,7 +238,7 @@ test("plugin: image/audio 按模型三层注册与 unavailable 结果冻结", as
     assert.deepEqual(Object.keys(hooks.tool), ["ts_mark_image", "ts_mark_audio"])
     const imageResult = await hooks.tool.ts_mark_image.execute({ model: "gpt-image-2.5-flare", prompt: "diagram", quality: "auto", timeout: 300 }, toolContext())
     const audioResult = await hooks.tool.ts_mark_audio.execute({ model: "mimo-v2.5-tts", text: "hello", voice: "mimo_default", format: "wav", timeout: 300 }, toolContext())
-    assert.deepEqual(imageResult, failureResult("ts_mark_image", "TSGW_CONFIG", TSGW_CONFIG_UNAVAILABLE))
-    assert.deepEqual(audioResult, failureResult("ts_mark_audio", "TSGW_CONFIG", TSGW_CONFIG_UNAVAILABLE))
+    assert.deepEqual(imageResult, failureResult("ts_mark_image", "TSGW_CONFIG", "TSGW runtime provider configuration could not be read."))
+    assert.deepEqual(audioResult, failureResult("ts_mark_audio", "TSGW_CONFIG", "TSGW runtime provider configuration could not be read."))
   })
 })

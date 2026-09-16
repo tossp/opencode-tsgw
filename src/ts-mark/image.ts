@@ -4,7 +4,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import { generateImage } from "ai"
 
 import { TSGW_PROVIDER_ID, TSGW_PROVIDER_LABEL } from "../shared/tsgw/constants.js"
-import { resolveTsgwBaseURL } from "../shared/tsgw/provider.js"
+import { resolveTsgwBaseURL, type TsgwProviderReader } from "../shared/tsgw/provider.js"
 import { writeArtifact } from "./artifact.js"
 import {
   IMAGE_MODELS,
@@ -12,9 +12,8 @@ import {
   IMAGE_TOOL_NAME,
   type ImageModel,
   type ImageQuality,
-  type TsgwMediaAvailabilityStatus,
 } from "./constants.js"
-import { TsgwMediaError, toolFailure, unavailableMediaResult } from "./error.js"
+import { TsgwMediaError, toolFailure } from "./error.js"
 import { validateImageSize } from "./image-capabilities.js"
 import { inspectPng } from "./metadata.js"
 import {
@@ -42,7 +41,7 @@ export type ImageToolInput = {
   client: PluginInput["client"]
   directory: string
   getApiKey: () => Promise<string>
-  availability: TsgwMediaAvailabilityStatus
+  readProvider?: TsgwProviderReader
 }
 
 export function normalizeImageArgs(args: ImageToolArgs): NormalizedImageToolArgs {
@@ -84,12 +83,10 @@ export function createImageTool(input: ImageToolInput): ToolDefinition {
     },
     async execute(args, context) {
       try {
-        if (input.availability === "unavailable") return unavailableMediaResult(IMAGE_TOOL_NAME)
-
         const normalizedArgs = normalizeImageArgs(args)
         const prompt = trimRequired(normalizedArgs.prompt, "prompt")
         const requestedSize = validateImageSize(normalizedArgs.model, normalizedArgs.size)
-        const baseURL = await resolveTsgwBaseURL(input.client, input.directory, createError, normalizedArgs.model)
+        const baseURL = await resolveTsgwBaseURL(input.client, input.directory, createError, normalizedArgs.model, input.readProvider)
         const apiKey = await input.getApiKey()
         const tsgwOpenAI = createOpenAI({ name: TSGW_PROVIDER_ID, baseURL, apiKey })
 

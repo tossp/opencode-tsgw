@@ -74,9 +74,9 @@ test("media: missing selected model can request explicit provider default withou
   assert.deepEqual(configCalls, [{ query: { directory } }, { query: { directory } }])
 })
 
-test("media: address-free inactive models do not register; provider failures stay unavailable", async () => {
+test("media: empty models register; failed background reads recover at execution", async () => {
   const noActive = await tsMark({ client: { config: { providers: async () => ({ data: { providers: [{ id: "tsgw", models: {} }] } }) } }, directory })
-  assert.deepEqual(noActive.tool, {})
+  assert.deepEqual(Object.keys(noActive.tool), ["ts_mark_image", "ts_mark_audio"])
   for (const response of [{ data: { providers: [] } }, {}, { error: "fixture" }, new Error("fixture")]) {
     let reads = 0
     const hooks = await tsMark({ client: { config: { providers: async () => {
@@ -86,13 +86,14 @@ test("media: address-free inactive models do not register; provider failures sta
       return response
     } } }, directory })
     assert.deepEqual(Object.keys(hooks.tool), ["ts_mark_image", "ts_mark_audio"])
+    await new Promise((resolve) => setImmediate(resolve))
     for (const [tool, model, args] of [cases[0], cases[2]]) {
       assert.deepEqual(await hooks.tool[tool].execute({ ...args, model }, context()), {
         title: tool,
-        output: "[TSGW_CONFIG] TSGW runtime provider configuration is unavailable.",
-        metadata: { provider: "tsgw", phase: "TSGW_CONFIG" },
+        output: "[AUTH] TSGW API authentication is not available.",
+        metadata: { provider: "tsgw", phase: "AUTH" },
       })
     }
-    assert.equal(reads, 1)
+    assert.equal(reads, 3)
   }
 })

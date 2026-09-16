@@ -14,6 +14,4 @@ export type ImageQuality = (typeof IMAGE_QUALITIES)[number]
 export type AudioModel = (typeof AUDIO_MODELS)[number]
 export type AudioFormat = (typeof AUDIO_FORMATS)[number]
 
-export type TsgwMediaAvailabilityStatus = "ok" | "unavailable"
-
 export const ARTIFACT_DIRECTORY = join(tmpdir(), "ts-mark")

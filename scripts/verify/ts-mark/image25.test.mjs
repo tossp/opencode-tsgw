@@ -30,7 +30,7 @@ function clientFor(models = IMAGE_MODELS, useDefault = false) {
 }
 
 function definition(client = clientFor()) {
-  return createImageTool({ client, directory, availability: "ok", getApiKey: async () => "fixture-key" })
+  return createImageTool({ client, directory, getApiKey: async () => "fixture-key" })
 }
 
 // Per-test mock restored by node:test. Sequential subtests prevent same-process pollution.
@@ -110,9 +110,9 @@ test("image25: retired GPT/Luna rejected by schema and execution with zero reque
   assert.equal(net.calls.length, 0)
 })
 
-test("image25: retired active image keys do not register an image tool", async () => {
+test("image25: retired active image keys do not hide tools", async () => {
   for (const models of [["gpt-image-2"], ["gpt-5.6-luna"], ["gpt-image-2", "gpt-5.6-luna"]]) {
-    assert.deepEqual((await tsMark({ client: clientFor(models), directory })).tool, {})
+    assert.deepEqual(Object.keys((await tsMark({ client: clientFor(models), directory })).tool), ["ts_mark_image", "ts_mark_audio"])
   }
 })
 
@@ -144,7 +144,7 @@ test("image25: each active key registers; another absent candidate can still req
   const net = network(t)
   for (const [index, model] of newModels.entries()) {
     const hooks = await tsMark({ client: clientFor([model], true), directory })
-    assert.deepEqual(Object.keys(hooks.tool), ["ts_mark_image"])
+    assert.deepEqual(Object.keys(hooks.tool), ["ts_mark_image", "ts_mark_audio"])
     await hooks.auth.loader(async () => ({ type: "api", key: "fixture-key" }))
     const selected = newModels[(index + 1) % newModels.length]
     net.expect(selected, undefined, "https://fixture.test/default/images/generations")
@@ -152,7 +152,7 @@ test("image25: each active key registers; another absent candidate can still req
     assert.equal(result.metadata.phase, "HTTP")
     assert.equal(net.calls.at(-1).body.model, selected)
   }
-  assert.deepEqual((await tsMark({ client: clientFor([]), directory })).tool, {})
+  assert.deepEqual(Object.keys((await tsMark({ client: clientFor([]), directory })).tool), ["ts_mark_image", "ts_mark_audio"])
   assert.equal(net.calls.length, 3)
 })
 

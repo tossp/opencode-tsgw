@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { resolveTsgwAvailability, resolveTsgwBaseURL } from "../../../dist/shared/tsgw/provider.js"
+import { resolveTsgwBaseURL } from "../../../dist/shared/tsgw/provider.js"
 import { tsSearch } from "../../../dist/ts-search/index.js"
 import { TsgwSearchError } from "../../../dist/ts-search/error.js"
 import { SEARCH_ROUTES } from "../../../dist/ts-search/constants.js"
@@ -34,7 +34,7 @@ function clientFor(provider, configResult = { data: {} }) {
 }
 
 function searchInput(client, fetchImpl) {
-  return { client, directory, query: "offline query", availability: "ok", getApiKey: async () => "fixture-key", signal: new AbortController().signal, fetchImpl }
+  return { client, directory, query: "offline query", getApiKey: async () => "fixture-key", signal: new AbortController().signal, fetchImpl }
 }
 
 function captureFetch(calls, expectedURLs) {
@@ -170,15 +170,13 @@ test("address: provider read failures retain TSGW_CONFIG contracts before config
     } }
     const expected = { name: "TsgwSearchError", phase: "TSGW_CONFIG", message: `TSGW runtime provider ${message}` }
     await assert.rejects(resolveTsgwBaseURL(client, directory, createError, "gpt-6-astra"), expected)
-    await assert.rejects(resolveTsgwAvailability(client, directory, createError), expected)
   }
 })
 
 test("registration: successful empty/inactive models need no address, invalid URL waits until execution", async () => {
   for (const activeModels of [{}, { "gpt-6-astra": { status: "inactive" } }]) {
     const fixture = clientFor({ id: "tsgw", models: activeModels })
-    assert.deepEqual(await resolveTsgwAvailability(fixture.client, directory, createError), { activeModelIds: [] })
-    assert.deepEqual((await tsSearch({ client: fixture.client, directory })).tool, {})
+    assert.deepEqual(Object.keys((await tsSearch({ client: fixture.client, directory })).tool), ["ts_search"])
     assert.deepEqual(fixture.calls.get, [])
   }
   const fixture = clientFor({ id: "tsgw", options: { baseURL: "invalid" }, models })
@@ -188,7 +186,9 @@ test("registration: successful empty/inactive models need no address, invalid UR
   assert.deepEqual(fixture.calls.get, [])
 })
 
-test("registration: missing/failed provider stays fixed unavailable even after provider recovery", async () => {
+test("registration: missing/failed background provider is reread on execution after recovery", async (t) => {
+  const calls = []
+  t.mock.method(globalThis, "fetch", captureFetch(calls, ["https://fixture.test/gpt/v1/chat/completions", "https://fixture.test/grok/v2/chat/completions"]))
   for (const response of [{ data: { providers: [] } }, {}, { error: "fixture" }, new Error("fixture")]) {
     let reads = 0
     const client = { config: { providers: async () => {
@@ -199,8 +199,10 @@ test("registration: missing/failed provider stays fixed unavailable even after p
     }, get: async () => { assert.fail("Unexpected config.get") } } }
     const hooks = await tsSearch({ client, directory })
     assert.deepEqual(Object.keys(hooks.tool), ["ts_search"])
+    await hooks.auth.loader(async () => ({ type: "api", key: "fixture-key" }))
     const result = await hooks.tool.ts_search.execute({ query: "offline" }, { abort: new AbortController().signal, metadata() {} })
-    assert.match(result.output, /\[TSGW_CONFIG\] TSGW runtime provider configuration is unavailable\./u)
-    assert.equal(reads, 1)
+    assert.equal(result.metadata.status, "success")
+    assert.equal(reads, 2)
   }
+  assert.equal(calls.length, 8)
 })
