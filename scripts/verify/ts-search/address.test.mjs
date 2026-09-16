@@ -13,7 +13,7 @@ globalThis.fetch = async () => { throw new Error("Unexpected fetch: offline fixt
 const directory = "/fixture/address directory"
 const createError = (phase, message) => new TsgwSearchError(phase, message)
 const model = (url) => ({ status: "active", api: { url, id: "DO-NOT-RENAME", npm: "DO-NOT-SWITCH" } })
-const models = { "gpt-5.4": model("https://fixture.test/gpt/v1"), "grok-4.20-fast": model("https://fixture.test/grok/v2") }
+const models = { "gpt-6-astra": model("https://fixture.test/gpt/v1"), "grok-4.6": model("https://fixture.test/grok/v2") }
 
 function clientFor(provider, configResult = { data: {} }) {
   const calls = { providers: [], get: [] }
@@ -86,8 +86,12 @@ test("search: model-only addresses register and execute distinct paths with froz
     assert.equal(request.body.messages[0].role, "system")
     assert.equal(result.metadata.routes[index].requestId, `req-${route.model}`)
   }
-  assert.deepEqual(calls.find((r) => r.body.model === "gpt-5.4").body.tools, [{ type: "web_search" }])
-  assert.deepEqual(calls.find((r) => r.body.model === "grok-4.20-fast").body.search_parameters, { mode: "on" })
+  const gpt = calls.find((r) => r.body.model === "gpt-6-astra").body
+  const grok = calls.find((r) => r.body.model === "grok-4.6").body
+  assert.deepEqual(gpt.tools, [{ type: "web_search" }])
+  assert.equal(gpt.reasoning_effort, "low")
+  assert.deepEqual(grok.search_parameters, { mode: "on" })
+  assert.equal(Object.hasOwn(grok, "reasoning_effort"), false)
   assert.deepEqual(fixture.calls.get, [])
 })
 
@@ -101,18 +105,18 @@ test("address: missing target uses explicit provider defaults and still requests
     const calls = []
     const result = await executeUnifiedSearch(searchInput(fixture.client, captureFetch(calls, ["https://fixture.test/default/chat/completions"])))
     assert.deepEqual(result.map((r) => r.ok), [true, true])
-    assert.deepEqual(calls.map((r) => r.body.model).sort(), ["gpt-5.4", "grok-4.20-fast"])
+    assert.deepEqual(calls.map((r) => r.body.model).sort(), ["gpt-6-astra", "grok-4.6"])
     assert.deepEqual(fixture.calls.get, [{ query: { directory } }, { query: { directory } }])
   }
 })
 
 test("search: one missing or invalid route address never discards the other result", async () => {
   for (const gpt of [undefined, model("not a URL")]) {
-    const fixture = clientFor({ id: "tsgw", models: { ...(gpt ? { "gpt-5.4": gpt } : {}), "grok-4.20-fast": models["grok-4.20-fast"] } })
+    const fixture = clientFor({ id: "tsgw", models: { ...(gpt ? { "gpt-6-astra": gpt } : {}), "grok-4.6": models["grok-4.6"] } })
     const calls = []
     const result = await executeUnifiedSearch(searchInput(fixture.client, captureFetch(calls, ["https://fixture.test/grok/v2/chat/completions"])))
     assert.deepEqual(result[0], failedSearchRoute(SEARCH_ROUTES[0], `[TSGW_CONFIG] TSGW runtime provider baseURL is ${gpt ? "invalid" : "unavailable"}.`))
-    assert.deepEqual(result[1], { ...SEARCH_ROUTES[1], ok: true, answer: "answer grok-4.20-fast", urls: [], requestId: "req-grok-4.20-fast", error: "" })
+    assert.deepEqual(result[1], { ...SEARCH_ROUTES[1], ok: true, answer: "answer grok-4.6", urls: [], requestId: "req-grok-4.6", error: "" })
     assert.equal(calls.length, 1)
     assert.equal(fixture.calls.get.length, gpt ? 0 : 1)
   }
@@ -138,7 +142,7 @@ test("address: empty/error/missing config fails closed; never borrow another mod
 })
 
 test("search: auth failure preserves the other route's configuration error", async () => {
-  const fixture = clientFor({ id: "tsgw", models: { "grok-4.20-fast": models["grok-4.20-fast"] } })
+  const fixture = clientFor({ id: "tsgw", models: { "grok-4.6": models["grok-4.6"] } })
   let authCalls = 0
   let fetchCalls = 0
   const result = await executeUnifiedSearch({
@@ -165,13 +169,13 @@ test("address: provider read failures retain TSGW_CONFIG contracts before config
       get: async () => { assert.fail("Unexpected config.get") },
     } }
     const expected = { name: "TsgwSearchError", phase: "TSGW_CONFIG", message: `TSGW runtime provider ${message}` }
-    await assert.rejects(resolveTsgwBaseURL(client, directory, createError, "gpt-5.4"), expected)
+    await assert.rejects(resolveTsgwBaseURL(client, directory, createError, "gpt-6-astra"), expected)
     await assert.rejects(resolveTsgwAvailability(client, directory, createError), expected)
   }
 })
 
 test("registration: successful empty/inactive models need no address, invalid URL waits until execution", async () => {
-  for (const activeModels of [{}, { "gpt-5.4": { status: "inactive" } }]) {
+  for (const activeModels of [{}, { "gpt-6-astra": { status: "inactive" } }]) {
     const fixture = clientFor({ id: "tsgw", models: activeModels })
     assert.deepEqual(await resolveTsgwAvailability(fixture.client, directory, createError), { activeModelIds: [] })
     assert.deepEqual((await tsSearch({ client: fixture.client, directory })).tool, {})

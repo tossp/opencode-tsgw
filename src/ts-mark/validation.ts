@@ -13,9 +13,6 @@ export const STANDARD_AUDIO_VOICES = ["mimo_default", "冰糖", "茉莉", "苏�
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647
 const MAX_CLONE_DATA_URL_BYTES = 10_000_000
-const GPT_IMAGE_MIN_PIXELS = 655_360
-const GPT_IMAGE_MAX_PIXELS = 8_294_400
-const GPT_IMAGE_MAX_EDGE = 3_840
 
 type TimeoutSchema = ReturnType<
   ReturnType<
@@ -40,54 +37,6 @@ export function trimRequired(value: string, field: string): string {
     throw new TsgwMediaError("INPUT_VALIDATION", `${field} must be a non-empty string.`)
   }
   return trimmed
-}
-
-export function validateGptImageSize(value: string | undefined): string | undefined {
-  if (value === undefined) return undefined
-
-  const size = trimRequired(value, "size")
-  if (size === "auto") return size
-
-  const match = /^(\d+)x(\d+)$/u.exec(size)
-  if (!match) {
-    throw new TsgwMediaError("INPUT_VALIDATION", "gpt-image-2 size must be auto or WIDTHxHEIGHT.")
-  }
-
-  const width = Number(match[1])
-  const height = Number(match[2])
-  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) {
-    throw new TsgwMediaError("INPUT_VALIDATION", "gpt-image-2 size dimensions must be positive integers.")
-  }
-
-  const longEdge = Math.max(width, height)
-  const shortEdge = Math.min(width, height)
-  const pixels = width * height
-  if (width % 16 !== 0 || height % 16 !== 0) {
-    throw new TsgwMediaError("INPUT_VALIDATION", "gpt-image-2 size dimensions must be multiples of 16.")
-  }
-  if (longEdge > GPT_IMAGE_MAX_EDGE) {
-    throw new TsgwMediaError("INPUT_VALIDATION", "gpt-image-2 size cannot exceed 3840 pixels on either edge.")
-  }
-  if (longEdge / shortEdge > 3) {
-    throw new TsgwMediaError("INPUT_VALIDATION", "gpt-image-2 size cannot exceed a 3:1 aspect ratio.")
-  }
-  if (pixels < GPT_IMAGE_MIN_PIXELS || pixels > GPT_IMAGE_MAX_PIXELS) {
-    throw new TsgwMediaError("INPUT_VALIDATION", "gpt-image-2 size must contain 655360 to 8294400 pixels.")
-  }
-
-  return size
-}
-
-const LUNA_SIZES = ["1024x1024", "1024x1536", "1536x1024", "auto"] as const
-export type LunaImageSize = (typeof LUNA_SIZES)[number]
-
-export function validateLunaImageSize(value: string | undefined): LunaImageSize | undefined {
-  if (value === undefined) return undefined
-
-  const size = trimRequired(value, "size")
-  if ((LUNA_SIZES as readonly string[]).includes(size)) return size as LunaImageSize
-
-  throw new TsgwMediaError("INPUT_VALIDATION", "gpt-5.6-luna size must be 1024x1024, 1024x1536, 1536x1024, or auto.")
 }
 
 export function validateStandardVoice(value: string | undefined): string {

@@ -2,8 +2,8 @@ export const PLUGIN_NAME = "ts_search"
 export const TOOL_TITLE = "TS Search"
 export const BACKEND = "aih"
 export const CHAT_COMPLETIONS_PATH = "chat/completions"
-export const GPT_SEARCH_MODEL = "gpt-5.4"
-export const GROK_SEARCH_MODEL = "grok-4.20-fast"
+export const GPT_SEARCH_MODEL = "gpt-6-astra"
+export const GROK_SEARCH_MODEL = "grok-4.6"
 
 export type SearchFamily = "gpt" | "grok"
 

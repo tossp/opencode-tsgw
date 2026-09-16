@@ -7,8 +7,8 @@ globalThis.fetch = async () => { throw new Error("Unexpected fetch: offline fixt
 const directory = "/fixture/media"
 const context = () => ({ directory, abort: new AbortController().signal, metadata() {} })
 const cases = [
-  ["ts_mark_image", "gpt-image-2", { prompt: "offline" }, "images/generations"],
-  ["ts_mark_image", "gpt-5.6-luna", { prompt: "offline" }, "responses"],
+  ["ts_mark_image", "gpt-image-2.5-flare", { prompt: "offline" }, "images/generations"],
+  ["ts_mark_image", "gpt-image-2.5-sunburst", { prompt: "offline" }, "images/generations"],
   ["ts_mark_audio", "mimo-v2.5-tts", { text: "offline" }, "chat/completions"],
   ["ts_mark_audio", "mimo-v2.5-tts-voicedesign", { text: "offline", voice: "Warm narrator" }, "chat/completions"],
 ]
@@ -55,7 +55,7 @@ test("media: missing selected model can request explicit provider default withou
   const calls = []
   const configCalls = []
   const client = { config: {
-    providers: async () => ({ data: { providers: [{ id: "tsgw", models: { "gpt-image-2": models["gpt-image-2"], "mimo-v2.5-tts": models["mimo-v2.5-tts"] } }] } }),
+    providers: async () => ({ data: { providers: [{ id: "tsgw", models: { "gpt-image-2.5-flare": models["gpt-image-2.5-flare"], "mimo-v2.5-tts": models["mimo-v2.5-tts"] } }] } }),
     get: async (args) => { configCalls.push(args); return { data: { provider: { tsgw: { api: "https://fixture.test/default" } } } } },
   } }
   const hooks = await tsMark({ client, directory })

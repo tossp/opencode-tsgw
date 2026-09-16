@@ -1,7 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai"
 import type { PluginInput } from "@opencode-ai/plugin"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
-import { generateImage, generateText } from "ai"
+import { generateImage } from "ai"
 
 import { TSGW_PROVIDER_ID, TSGW_PROVIDER_LABEL } from "../shared/tsgw/constants.js"
 import { resolveTsgwBaseURL } from "../shared/tsgw/provider.js"
@@ -15,11 +15,10 @@ import {
   type TsgwMediaAvailabilityStatus,
 } from "./constants.js"
 import { TsgwMediaError, toolFailure, unavailableMediaResult } from "./error.js"
-import { isGptImageModel, validateImageSize, validateLegacyImageQuality } from "./image-capabilities.js"
+import { validateImageSize } from "./image-capabilities.js"
 import { inspectPng } from "./metadata.js"
 import {
   DEFAULT_TIMEOUT_SECONDS,
-  decodeBase64,
   timeoutSchema,
   trimRequired,
   withSharedTimeout,
@@ -47,18 +46,16 @@ export type ImageToolInput = {
 }
 
 export function normalizeImageArgs(args: ImageToolArgs): NormalizedImageToolArgs {
+  const model = args.model === undefined ? "gpt-image-2.5-flare" : args.model
+  if (!(IMAGE_MODELS as readonly string[]).includes(model)) {
+    throw new TsgwMediaError("INPUT_VALIDATION", "model must be one of the supported image models.")
+  }
   return {
     ...args,
-    model: args.model === undefined ? "gpt-image-2" : args.model,
+    model,
     quality: args.quality === undefined ? "auto" : args.quality,
     timeout: args.timeout === undefined ? DEFAULT_TIMEOUT_SECONDS : args.timeout,
   }
-}
-
-export function extractLunaImageBase64(
-  staticToolResults: ReadonlyArray<{ toolName: string; output: { result: string } }>,
-): string | undefined {
-  return staticToolResults.find((item) => item.toolName === "image_generation")?.output.result
 }
 
 function createError(phase: "TSGW_CONFIG" | "AUTH", message: string): TsgwMediaError {
@@ -68,21 +65,21 @@ function createError(phase: "TSGW_CONFIG" | "AUTH", message: string): TsgwMediaE
 export function createImageTool(input: ImageToolInput): ToolDefinition {
   return tool({
     description:
-      `通过 ${TSGW_PROVIDER_LABEL} 生成一张 PNG 图片。GPT Image 2/2.5 使用 Images API；gpt-5.6-luna 使用 Responses image_generation 工具。2.5 允许额外质量 xhigh/max；裸 ID gpt-image-2.5 为未实测网关候选。size 指定请求尺寸，实际输出尺寸可能不同。`,
+      `通过 ${TSGW_PROVIDER_LABEL} 的 Images API 生成一张 PNG 图片。仅支持三个 GPT Image 2.5 ID，默认 Flare；quality 支持 low/medium/high/xhigh/max/auto。裸 ID gpt-image-2.5 原样透传，上游语义及生成未实测。实际输出尺寸可能不同。`,
     args: {
       model: tool.schema
         .enum(IMAGE_MODELS)
-        .default("gpt-image-2")
-        .describe("GPT Image 2/2.5 使用 Images API，默认 gpt-image-2；gpt-5.6-luna 使用 Responses image_generation 工具。gpt-image-2.5 裸 ID 原样透传，生成未实测。"),
+        .default("gpt-image-2.5-flare")
+        .describe("GPT Image 2.5 使用 Images API，默认 gpt-image-2.5-flare；gpt-image-2.5 裸 ID 原样透传，生成未实测。"),
       prompt: tool.schema.string().trim().min(1).describe("必填的图像生成提示词。"),
       size: tool.schema
         .string()
         .optional()
-        .describe("可选 size。gpt-image-2 保持原尺寸限制；2.5 接受 auto 或正安全整数 WIDTHxHEIGHT（16 对齐、宽高比不超过 3:1），其他限制由服务端检查；Luna 接受 1024x1024、1024x1536、1536x1024 或 auto。实际输出尺寸可能不同。"),
+        .describe("可选 size：auto 或正安全整数 WIDTHxHEIGHT（16 对齐、宽高比不超过 3:1），其他限制由服务端检查。实际输出尺寸可能不同。"),
       quality: tool.schema
         .enum(IMAGE_QUALITIES)
         .default("auto")
-        .describe("渲染 quality，默认 auto。GPT Image 2/Luna 允许 low/medium/high/auto；2.5 另允许 xhigh/max，裸 ID 的上游接受性未实测。"),
+        .describe("渲染 quality：low/medium/high/xhigh/max/auto，默认 auto；裸 ID 的上游接受性未实测。"),
       timeout: timeoutSchema().describe("模型调用最长等待时间（秒）。默认 300。发生超时后，provider 可能已经计费。"),
     },
     async execute(args, context) {
@@ -92,49 +89,24 @@ export function createImageTool(input: ImageToolInput): ToolDefinition {
         const normalizedArgs = normalizeImageArgs(args)
         const prompt = trimRequired(normalizedArgs.prompt, "prompt")
         const requestedSize = validateImageSize(normalizedArgs.model, normalizedArgs.size)
-        if (normalizedArgs.model === "gpt-image-2" || normalizedArgs.model === "gpt-5.6-luna") {
-          validateLegacyImageQuality(normalizedArgs.model, normalizedArgs.quality)
-        }
         const baseURL = await resolveTsgwBaseURL(input.client, input.directory, createError, normalizedArgs.model)
         const apiKey = await input.getApiKey()
         const tsgwOpenAI = createOpenAI({ name: TSGW_PROVIDER_ID, baseURL, apiKey })
 
-        const image = isGptImageModel(normalizedArgs.model)
-          ? await withSharedTimeout(context.abort, normalizedArgs.timeout, async (abortSignal) => {
-              const result = await generateImage({
-                model: tsgwOpenAI.image(normalizedArgs.model),
-                prompt,
-                ...(requestedSize && requestedSize !== "auto" ? { size: requestedSize as `${number}x${number}` } : {}),
-                providerOptions: { openai: { quality: normalizedArgs.quality, outputFormat: "png" } },
-                maxRetries: 0,
-                abortSignal,
-              })
-              if (result.image.mediaType !== "image/png") {
-                throw new TsgwMediaError("PROTOCOL", `${TSGW_PROVIDER_LABEL} did not return PNG data for ${normalizedArgs.model}.`)
-              }
-              return result.image.uint8Array
-            })
-          : await withSharedTimeout(context.abort, normalizedArgs.timeout, async (abortSignal) => {
-              const result = await generateText({
-                model: tsgwOpenAI.responses("gpt-5.6-luna"),
-                prompt,
-                tools: {
-                  image_generation: tsgwOpenAI.tools.imageGeneration({
-                    quality: validateLegacyImageQuality(normalizedArgs.model, normalizedArgs.quality),
-                    outputFormat: "png",
-                    ...(requestedSize ? { size: requestedSize as "1024x1024" | "1024x1536" | "1536x1024" | "auto" } : {}),
-                  }),
-                },
-                toolChoice: { type: "tool", toolName: "image_generation" },
-                maxRetries: 0,
-                abortSignal,
-              })
-              const generated = extractLunaImageBase64(result.staticToolResults)
-              if (typeof generated !== "string") {
-                throw new TsgwMediaError("PROTOCOL", `${TSGW_PROVIDER_LABEL} did not return a Luna image-generation result.`)
-              }
-              return decodeBase64(generated, "PNG")
-            })
+        const image = await withSharedTimeout(context.abort, normalizedArgs.timeout, async (abortSignal) => {
+          const result = await generateImage({
+            model: tsgwOpenAI.image(normalizedArgs.model),
+            prompt,
+            ...(requestedSize && requestedSize !== "auto" ? { size: requestedSize as `${number}x${number}` } : {}),
+            providerOptions: { openai: { quality: normalizedArgs.quality, outputFormat: "png" } },
+            maxRetries: 0,
+            abortSignal,
+          })
+          if (result.image.mediaType !== "image/png") {
+            throw new TsgwMediaError("PROTOCOL", `${TSGW_PROVIDER_LABEL} did not return PNG data for ${normalizedArgs.model}.`)
+          }
+          return result.image.uint8Array
+        })
 
         const inspection = inspectPng(image)
         const artifact = await writeArtifact("image", "png", image)

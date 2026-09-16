@@ -1,4 +1,4 @@
-// 2026-09-16: issue #22 阶段B，离线请求构造及固定PNG机械回归，不代表网关实测。
+// 2026-09-16: issue #22 最终模型收敛，离线请求及固定PNG机械回归，不代表网关实测。
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import { readFile, stat, unlink } from "node:fs/promises"
@@ -14,7 +14,7 @@ const qualities = ["low", "medium", "high", "xhigh", "max", "auto"]
 const directory = "/fixture/image25"
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")
 const modelURL = (model) => `https://fixture.test/${model}/v1`
-const requestURL = (model) => `${modelURL(model)}/${model === "gpt-5.6-luna" ? "responses" : "images/generations"}`
+const requestURL = (model) => `${modelURL(model)}/images/generations`
 const context = (signal = new AbortController().signal, metadata = () => {}) => ({ directory, abort: signal, metadata })
 
 function clientFor(models = IMAGE_MODELS, useDefault = false) {
@@ -59,10 +59,11 @@ function assertFailure(result, phase, message) {
 }
 
 test("image25: authorized model/quality schema additions", () => {
-  // Explicit golden arrays: only the three approved IDs and two quality values are added.
-  assert.deepEqual(IMAGE_MODELS, ["gpt-image-2", ...newModels, "gpt-5.6-luna"])
+  // Explicit golden array: retired models are no longer accepted.
+  assert.deepEqual(IMAGE_MODELS, newModels)
   assert.deepEqual(IMAGE_QUALITIES, qualities)
   const tool = definition()
+  assert.equal(tool.args.model.parse(undefined), "gpt-image-2.5-flare")
   for (const model of IMAGE_MODELS) assert.equal(tool.args.model.safeParse(model).success, true)
   for (const quality of qualities) assert.equal(tool.args.quality.safeParse(quality).success, true)
   assert.equal(tool.args.model.safeParse("gpt-image-unknown").success, false)
@@ -86,43 +87,33 @@ test("image25: all three literal IDs and six qualities reach Images JSON unchang
   assert.equal(net.calls.length, 18)
 })
 
-test("image25: legacy GPT explicit high and omitted defaults really send PNG quality", async (t) => {
+test("image25: Flare explicit high and omitted defaults really send PNG quality", async (t) => {
   const net = network(t), tool = definition()
-  for (const args of [{ model: "gpt-image-2", quality: "high" }, {}]) {
-    net.expect("gpt-image-2")
+  for (const args of [{ model: "gpt-image-2.5-flare", quality: "high" }, {}]) {
+    net.expect("gpt-image-2.5-flare")
     const result = await tool.execute({ prompt: "offline", ...args }, context())
     assert.equal(result.metadata.phase, "HTTP")
-    assert.deepEqual(net.calls.at(-1).body, { model: "gpt-image-2", prompt: "offline", n: 1, quality: args.quality ?? "auto", output_format: "png" })
+    assert.deepEqual(net.calls.at(-1).body, { model: "gpt-image-2.5-flare", prompt: "offline", n: 1, quality: args.quality ?? "auto", output_format: "png" })
   }
   assert.equal(net.calls.length, 2)
 })
 
-test("image25: old GPT/Luna reject xhigh/max locally without a request", async (t) => {
+test("image25: retired GPT/Luna rejected by schema and execution with zero requests", async (t) => {
   const net = network(t), tool = definition()
   for (const model of ["gpt-image-2", "gpt-5.6-luna"]) {
-    for (const quality of ["xhigh", "max"]) {
+    assert.equal(tool.args.model.safeParse(model).success, false)
+    for (const quality of qualities) {
       const result = await tool.execute({ model, quality, prompt: "offline" }, context())
-      assertFailure(result, "INPUT_VALIDATION", `${model} quality must be low, medium, high, or auto.`)
+      assertFailure(result, "INPUT_VALIDATION", "model must be one of the supported image models.")
     }
   }
   assert.equal(net.calls.length, 0)
 })
 
-test("image25: Luna retains four qualities and omitted/auto size tool semantics", async (t) => {
-  const net = network(t), tool = definition()
-  for (const quality of [undefined, "low", "medium", "high", "auto"]) {
-    for (const size of [undefined, "auto"]) {
-      net.expect("gpt-5.6-luna")
-      const result = await tool.execute({ model: "gpt-5.6-luna", quality, size, prompt: "offline" }, context())
-      assert.equal(result.metadata.phase, "HTTP")
-      const { url, body } = net.calls.at(-1)
-      assert.equal(url, `${modelURL("gpt-5.6-luna")}/responses`)
-      assert.equal(body.model, "gpt-5.6-luna")
-      assert.deepEqual(body.tools, [{ type: "image_generation", quality: quality ?? "auto", output_format: "png", ...(size ? { size } : {}) }])
-      assert.deepEqual(body.tool_choice, { type: "image_generation" })
-    }
+test("image25: retired active image keys do not register an image tool", async () => {
+  for (const models of [["gpt-image-2"], ["gpt-5.6-luna"], ["gpt-image-2", "gpt-5.6-luna"]]) {
+    assert.deepEqual((await tsMark({ client: clientFor(models), directory })).tool, {})
   }
-  assert.equal(net.calls.length, 10)
 })
 
 test("image25: size boundaries do not inherit old pixel/edge budgets", async (t) => {
@@ -146,10 +137,6 @@ test("image25: size boundaries do not inherit old pixel/edge budgets", async (t)
       assert.equal(net.calls.length, count)
     }
   }
-  // Legacy limits remain in force, unlike the new-model valid cases above.
-  for (const size of ["16x16", "4096x4096"]) assert.throws(() => validateImageSize("gpt-image-2", size), { phase: "INPUT_VALIDATION" })
-  assert.equal(validateImageSize("gpt-image-2", "1024x1024"), "1024x1024")
-  assert.throws(() => validateImageSize("gpt-5.6-luna", "16x16"), { phase: "INPUT_VALIDATION" })
   assert.equal(net.calls.length, newModels.length * valid.length)
 })
 
@@ -169,15 +156,10 @@ test("image25: each active key registers; another absent candidate can still req
   assert.equal(net.calls.length, 3)
 })
 
-test("image25: fixed PNG succeeds through SDK, inspection and artifact; Luna stays Responses", async (t) => {
+test("image25: all three models succeed through SDK, PNG inspection and artifact", async (t) => {
   const net = network(t), tool = definition()
-  for (const model of ["gpt-image-2", ...newModels, "gpt-5.6-luna"]) {
-    const luna = model === "gpt-5.6-luna"
-    net.expect(model, () => Response.json(luna ? {
-      id: "resp_fixture", created_at: 1, model,
-      output: [{ type: "image_generation_call", id: "ig_fixture", result: png.toString("base64") }],
-      usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
-    } : { created: 1, data: [{ b64_json: png.toString("base64") }] }))
+  for (const model of newModels) {
+    net.expect(model, () => Response.json({ created: 1, data: [{ b64_json: png.toString("base64") }] }))
     const metadataCalls = []
     const result = await tool.execute({ model, prompt: "offline", quality: "high", size: "1024x1024" }, context(undefined, (value) => metadataCalls.push(value)))
     if (result.metadata.filepath) t.after(async () => {
@@ -197,16 +179,11 @@ test("image25: fixed PNG succeeds through SDK, inspection and artifact; Luna sta
     const call = net.calls.at(-1)
     assert.equal(call.url, requestURL(model))
     assert.equal(call.body.model, model)
-    if (luna) {
-      assert.deepEqual(call.body.tools, [{ type: "image_generation", quality: "high", output_format: "png", size: "1024x1024" }])
-      assert.deepEqual(call.body.tool_choice, { type: "image_generation" })
-    } else {
-      assert.equal(call.body.quality, "high")
-      assert.equal(call.body.output_format, "png")
-      assert.equal(Object.hasOwn(call.body, "response_format"), false)
-    }
+    assert.equal(call.body.quality, "high")
+    assert.equal(call.body.output_format, "png")
+    assert.equal(Object.hasOwn(call.body, "response_format"), false)
   }
-  assert.equal(net.calls.length, 5)
+  assert.equal(net.calls.length, 3)
 })
 
 test("image25: HTTP, protocol, timeout and cancellation retain tool failure contracts", async (t) => {
